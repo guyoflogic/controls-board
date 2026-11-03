@@ -1,0 +1,538 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Controls Board Display</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans+Condensed:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+*{box-sizing:border-box}
+html{color-scheme:dark;background:#0d1215}
+body{background:#0d1215;color:#dbe5ea}
+/* ===== TV DISPLAY (#display) =====
+   Layout: control-room HMI screen — title bar with clock and link lamp, annunciator strip,
+   technician lanes (left, 2/3) beside a 3-week schedule (right, 1/3), event-log ticker at the bottom.
+   Single deliberate dark look. Following ISA-101 practice, normal states stay grey; colour is reserved for abnormal states. */
+#tv{
+  --tv-bg:#0d1215; --tv-panel:#141b20; --tv-panel2:#18222a; --tv-line:#26343d; --tv-grid:rgba(120,160,180,.05);
+  --tv-fg:#dbe5ea; --tv-dim:#8396a2; --tv-faint:#56666f;
+  --tv-cyan:#3fc1cc; --tv-run:#4ccf86; --tv-amber:#f1b43c; --tv-alarm:#ff5b4e; --tv-info:#9aa6ff;
+  --tv-disp:"Chakra Petch","Bahnschrift","DIN Alternate",system-ui,sans-serif;
+  --tv-body:"IBM Plex Sans Condensed","Arial Narrow",system-ui,sans-serif;
+  --tv-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+html.tv{color-scheme:dark}
+html.tv body{background:#0d1215;color:#dbe5ea;overflow:hidden}
+#tv{position:fixed;inset:0;display:grid;grid-template-rows:auto auto minmax(0,1fr) auto;gap:.9em;
+  padding:1.1em max(1.4em,env(safe-area-inset-right,0px)) 1em max(1.4em,env(safe-area-inset-left,0px));
+  background:var(--tv-bg);
+  background-image:linear-gradient(var(--tv-grid) 1px,transparent 1px),linear-gradient(90deg,var(--tv-grid) 1px,transparent 1px);
+  background-size:2.4em 2.4em;
+  color:var(--tv-fg);font-family:var(--tv-body);font-size:clamp(12px,.86vw,26px);line-height:1.35}
+#tv .tv-mono{font-family:var(--tv-mono);font-variant-numeric:tabular-nums}
+
+/* title bar */
+.tv-bar{display:flex;align-items:center;gap:1.4em;border-bottom:1px solid var(--tv-line);padding-bottom:.8em}
+.tv-mark{width:2.6em;height:2.6em;flex:none}
+.tv-name{min-width:0}
+.tv-name h1{font-family:var(--tv-disp);font-weight:700;font-size:2.15em;letter-spacing:.06em;text-transform:uppercase;margin:0;line-height:1}
+.tv-name p{margin:.3em 0 0;color:var(--tv-dim);font-family:var(--tv-mono);font-size:.82em;letter-spacing:.14em;text-transform:uppercase}
+.tv-sp{flex:1}
+.tv-lamp{display:flex;align-items:center;gap:.55em;font-family:var(--tv-mono);font-size:.85em;letter-spacing:.14em;color:var(--tv-dim);text-transform:uppercase;white-space:nowrap}
+.tv-lamp i{width:.75em;height:.75em;border-radius:50%;background:var(--tv-faint);display:block}
+.tv-lamp.on i{background:var(--tv-run);box-shadow:0 0 .6em var(--tv-run)}
+.tv-lamp.off i{background:var(--tv-alarm);box-shadow:0 0 .6em var(--tv-alarm)}
+.tv-clock{text-align:right}
+.tv-clock .t{font-family:var(--tv-mono);font-weight:500;font-size:2.4em;line-height:1;letter-spacing:.02em}
+.tv-clock .d{font-family:var(--tv-mono);color:var(--tv-dim);font-size:.85em;letter-spacing:.12em;text-transform:uppercase;margin-top:.3em}
+
+/* annunciator strip */
+.tv-ann{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.7em}
+.ann{background:var(--tv-panel);border:1px solid var(--tv-line);border-radius:.35em;padding:.6em .9em;display:flex;align-items:center;justify-content:space-between;gap:.8em;position:relative;overflow:hidden}
+.ann .k{font-family:var(--tv-mono);font-size:.8em;letter-spacing:.16em;text-transform:uppercase;color:var(--tv-dim)}
+.ann .v{font-family:var(--tv-disp);font-weight:600;font-size:2.5em;line-height:1;font-variant-numeric:tabular-nums}
+.ann .sub2{font-size:.82em;color:var(--tv-faint);margin-top:.15em}
+.ann::before{content:"";position:absolute;left:0;top:0;bottom:0;width:.3em;background:var(--tv-faint)}
+.ann.lit-run{border-color:rgba(76,207,134,.45)} .ann.lit-run::before{background:var(--tv-run)} .ann.lit-run .v{color:var(--tv-run)}
+.ann.lit-amber{border-color:rgba(241,180,60,.45)} .ann.lit-amber::before{background:var(--tv-amber)} .ann.lit-amber .v{color:var(--tv-amber)}
+.ann.lit-alarm{border-color:rgba(255,91,78,.55);background:linear-gradient(90deg,rgba(255,91,78,.1),var(--tv-panel) 60%)} .ann.lit-alarm::before{background:var(--tv-alarm)} .ann.lit-alarm .v{color:var(--tv-alarm)}
+.ann.lit-cyan::before{background:var(--tv-cyan)}
+@media (prefers-reduced-motion:no-preference){.ann.lit-alarm::before{animation:tvblink 1.6s steps(2,start) infinite}}
+@keyframes tvblink{to{opacity:.25}}
+
+/* main */
+.tv-main{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:.9em;min-height:0}
+.tv-lanes{display:grid;gap:.7em;min-height:0;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr)}
+.lane{background:var(--tv-panel);border:1px solid var(--tv-line);border-radius:.35em;display:flex;flex-direction:column;min-height:0;min-width:0}
+.lane-h{padding:.6em .85em;border-bottom:1px solid var(--tv-line);display:flex;flex-direction:column;gap:.15em;min-width:0}
+.lane-h .n{font-family:var(--tv-disp);font-weight:600;font-size:1.25em;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lane-h .c{font-family:var(--tv-mono);font-size:.8em;color:var(--tv-dim);white-space:nowrap}
+.lane-b{flex:1;min-height:0;overflow:hidden;padding:.6em;display:flex;flex-direction:column;gap:.55em}
+.lane-idle{margin:auto;color:var(--tv-faint);font-family:var(--tv-mono);font-size:.85em;letter-spacing:.14em;text-transform:uppercase;text-align:center}
+.tc{background:var(--tv-panel2);border:1px solid var(--tv-line);border-left:.28em solid var(--tv-faint);border-radius:.25em;padding:.55em .7em;display:flex;flex-direction:column;gap:.3em;flex:none}
+.tc.alarm{border-left-color:var(--tv-alarm)}
+.tc.warn{border-left-color:var(--tv-amber)}
+.tc.review{border-left-color:var(--tv-run);opacity:.78}
+.tc-h{display:flex;align-items:center;gap:.5em;flex-wrap:wrap}
+.tc-id{font-family:var(--tv-mono);font-weight:600;font-size:.9em;color:var(--tv-cyan)}
+.tc-pc{font-family:var(--tv-mono);font-size:.82em;color:var(--tv-fg);border:1px solid var(--tv-line);border-radius:.2em;padding:0 .35em}
+.tc-st{margin-left:auto;font-family:var(--tv-mono);font-size:.72em;letter-spacing:.12em;text-transform:uppercase;color:var(--tv-dim);white-space:nowrap}
+.tc.alarm .tc-st{color:var(--tv-alarm)} .tc.warn .tc-st{color:var(--tv-amber)} .tc.review .tc-st{color:var(--tv-run)}
+.tc-t{font-weight:600;font-size:1.08em;line-height:1.2;overflow-wrap:anywhere}
+.tc-m{display:flex;gap:.7em;flex-wrap:wrap;font-family:var(--tv-mono);font-size:.78em;color:var(--tv-dim);letter-spacing:.04em}
+.tc-m .od{color:var(--tv-alarm);font-weight:600}
+.tc-m .hi{color:var(--tv-amber);font-weight:600;letter-spacing:.12em}
+.tc-u{font-size:.88em;color:var(--tv-dim);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+
+/* schedule */
+.tv-cal{background:var(--tv-panel);border:1px solid var(--tv-line);border-radius:.35em;display:flex;flex-direction:column;min-height:0;min-width:0}
+.cal-h{padding:.65em .85em;border-bottom:1px solid var(--tv-line);display:flex;justify-content:space-between;align-items:baseline;gap:.5em}
+.cal-h .n{font-family:var(--tv-disp);font-weight:600;font-size:1.25em;letter-spacing:.04em;text-transform:uppercase}
+.cal-h .c{font-family:var(--tv-mono);font-size:.75em;color:var(--tv-dim);white-space:nowrap}
+.cal-g{flex:1;min-height:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr)) repeat(2,minmax(0,.55fr));grid-template-rows:auto repeat(3,minmax(0,1fr));gap:1px;background:var(--tv-line);border-bottom:1px solid var(--tv-line)}
+.cal-dn{background:var(--tv-panel);font-family:var(--tv-mono);font-size:.72em;letter-spacing:.14em;color:var(--tv-dim);text-align:center;padding:.35em 0;text-transform:uppercase}
+.cal-d{background:var(--tv-panel);padding:.3em .3em .35em;min-width:0;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:.22em}
+.cal-d.past{background:#11171b}
+.cal-d.past .cal-n{color:var(--tv-faint)}
+.cal-d.wk{background:#12191d}
+.cal-d.today{box-shadow:inset 0 0 0 2px var(--tv-cyan)}
+.cal-n{font-family:var(--tv-mono);font-size:.8em;color:var(--tv-dim);display:flex;justify-content:space-between}
+.cal-d.today .cal-n{color:var(--tv-cyan);font-weight:600}
+.ev{font-size:.74em;line-height:1.2;border-radius:.18em;padding:.15em .3em;background:var(--tv-panel2);border-left:.22em solid var(--tv-faint);overflow:hidden;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;flex:none}
+.ev b{font-family:var(--tv-mono);font-weight:600;color:var(--tv-cyan)}
+.ev.alarm{border-left-color:var(--tv-alarm)} .ev.warn{border-left-color:var(--tv-amber)} .ev.review{border-left-color:var(--tv-run)}
+.ev.own{border-left-color:var(--tv-info);color:#c9cfff;background:rgba(154,166,255,.09)}
+.cal-f{padding:.5em .85em;display:flex;gap:1.1em;flex-wrap:wrap;font-family:var(--tv-mono);font-size:.72em;color:var(--tv-dim);letter-spacing:.06em}
+.cal-f i{display:inline-block;width:.8em;height:.8em;border-radius:.15em;margin-right:.4em;vertical-align:-.05em;background:var(--tv-faint)}
+
+/* event log ticker */
+.tv-tick{display:flex;align-items:stretch;border:1px solid var(--tv-line);border-radius:.35em;background:var(--tv-panel);overflow:hidden;min-width:0}
+.tv-tick .lbl2{flex:none;font-family:var(--tv-mono);font-size:.78em;letter-spacing:.16em;color:var(--tv-bg);background:var(--tv-cyan);padding:.55em .9em;display:flex;align-items:center;font-weight:600}
+.tv-tick .vp{flex:1;min-width:0;overflow:hidden;position:relative;display:flex;align-items:center}
+.tv-tick .tr{display:inline-flex;gap:3em;white-space:nowrap;padding-left:2em;font-size:.95em}
+.tv-tick .tr span b{font-family:var(--tv-mono);color:var(--tv-cyan);font-weight:600;margin-right:.5em}
+.tv-tick .tr span em{font-style:normal;font-family:var(--tv-mono);color:var(--tv-dim);margin-right:.6em}
+@media (prefers-reduced-motion:no-preference){.tv-tick .tr.run{animation:tvscroll var(--dur,60s) linear infinite}}
+@keyframes tvscroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+
+/* overlay controls */
+.tv-ctl{position:fixed;right:calc(1.4em + env(safe-area-inset-right,0px));bottom:calc(4.2em + env(safe-area-inset-bottom,0px));display:flex;gap:.5em;opacity:0;transition:opacity .3s;font-size:clamp(12px,.86vw,26px)}
+.tv-ctl.show{opacity:1}
+.tv-ctl a,.tv-ctl button{font:500 .85em/1 var(--tv-mono);letter-spacing:.1em;text-transform:uppercase;color:#dbe5ea;background:#18222a;border:1px solid #3a4b56;border-radius:.3em;padding:.7em 1em;cursor:pointer;text-decoration:none}
+.tv-ctl a:focus-visible,.tv-ctl button:focus-visible{outline:2px solid #3fc1cc;outline-offset:2px}
+.tv-msg{margin:auto;text-align:center;color:var(--tv-dim);font-family:var(--tv-mono);letter-spacing:.1em;text-transform:uppercase}
+
+/* rotating views */
+.tv-bar{position:relative}
+.tv-prog{position:absolute;left:0;right:0;bottom:-1px;height:2px;background:transparent}
+.tv-prog i{display:block;height:100%;width:0;background:var(--tv-cyan);opacity:.7;transition:width 1s linear}
+.tv-view{font-family:var(--tv-mono);font-size:.8em;letter-spacing:.14em;text-transform:uppercase;color:var(--tv-dim);white-space:nowrap;display:flex;align-items:center;gap:.7em}
+.tv-view .dots{display:flex;gap:.35em}
+.tv-view .dots i{width:.5em;height:.5em;border-radius:50%;background:var(--tv-faint);display:block}
+.tv-view .dots i.on{background:var(--tv-cyan)}
+.tv-stage{position:relative;min-height:0}
+.tv-panel{position:absolute;inset:0;opacity:0;visibility:hidden;transform:translateY(.8em);transition:opacity .9s ease,transform .9s ease,visibility 0s linear .9s}
+.tv-panel.on{opacity:1;visibility:visible;transform:none;transition:opacity .9s ease,transform .9s ease}
+#tv{transition:transform 3s ease}
+/* attention view */
+.tv-att{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:.9em}
+.att-col{background:var(--tv-panel);border:1px solid var(--tv-line);border-radius:.35em;display:flex;flex-direction:column;min-height:0;min-width:0}
+.att-col.alarm{border-top:.25em solid var(--tv-alarm)} .att-col.review{border-top:.25em solid var(--tv-run)}
+.att-h{padding:.7em .9em;border-bottom:1px solid var(--tv-line);display:flex;justify-content:space-between;align-items:baseline}
+.att-h .n{font-family:var(--tv-disp);font-weight:600;font-size:1.5em;letter-spacing:.04em;text-transform:uppercase}
+.att-h .c{font-family:var(--tv-disp);font-weight:600;font-size:1.8em;font-variant-numeric:tabular-nums}
+.att-col.alarm .att-h .c{color:var(--tv-alarm)} .att-col.review .att-h .c{color:var(--tv-run)}
+.att-b{flex:1;min-height:0;overflow:hidden;padding:.7em;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.6em;align-content:start}
+.att-b .tc{font-size:1.12em}
+.att-b .tc.review{opacity:1}
+.att-empty{grid-column:1/-1;margin:3em auto;font-family:var(--tv-mono);letter-spacing:.14em;color:var(--tv-faint);text-transform:uppercase}
+/* four-week schedule */
+.tv-cal4 .tv-cal{position:absolute;inset:0}
+.tv-cal4 .ev{font-size:.92em}
+#tvCal4{grid-template-rows:auto repeat(4,minmax(0,1fr))}
+.tv-cal4 .cal-n{font-size:.95em}
+/* team load */
+.tv-load .ld-wrap{position:absolute;inset:0;background:var(--tv-panel);border:1px solid var(--tv-line);border-radius:.35em;display:flex;flex-direction:column;min-height:0}
+.ld-head{padding:.7em .9em;border-bottom:1px solid var(--tv-line);display:flex;justify-content:space-between;align-items:baseline;gap:1em;flex-wrap:wrap}
+.ld-head .n{font-family:var(--tv-disp);font-weight:600;font-size:1.5em;letter-spacing:.04em;text-transform:uppercase}
+.ld-key{display:flex;gap:1.4em;font-family:var(--tv-mono);font-size:.78em;color:var(--tv-dim);letter-spacing:.06em}
+.ld-key i{display:inline-block;width:.8em;height:.8em;border-radius:.15em;margin-right:.4em;vertical-align:-.05em}
+.ld-rows{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:space-evenly;padding:.6em 1.4em}
+.ld-row{display:grid;grid-template-columns:minmax(0,13em) minmax(0,1fr) minmax(0,19em);gap:1.4em;align-items:center}
+.ld-n{font-family:var(--tv-disp);font-weight:600;font-size:1.5em;text-transform:uppercase;letter-spacing:.03em;line-height:1.1}
+.ld-n small{display:block;font-family:var(--tv-mono);font-weight:400;font-size:.5em;color:var(--tv-dim);letter-spacing:.12em;margin-top:.3em}
+.ld-bar{display:flex;height:2.6em;background:var(--tv-panel2);border:1px solid var(--tv-line);border-radius:.25em;overflow:hidden}
+.ld-bar i{display:flex;align-items:center;justify-content:center;font-style:normal;font-family:var(--tv-mono);font-weight:600;font-size:1.05em;color:#0d1215;min-width:0;transition:flex-grow 1s ease}
+.ld-bar i.e{background:transparent}
+i.a{background:var(--tv-alarm)} i.n{background:#8396a2} i.r{background:var(--tv-run)}
+.ld-next{font-size:.95em;color:var(--tv-dim);line-height:1.35}
+.ld-next b{font-family:var(--tv-mono);color:var(--tv-cyan);font-weight:600}
+.ld-next span{display:block;color:var(--tv-faint);font-family:var(--tv-mono);font-size:.85em;letter-spacing:.06em;margin-top:.2em}
+/* shop talk */
+.tv-say{background:var(--tv-panel);border:1px solid var(--tv-line);border-radius:.35em;overflow:hidden;display:flex}
+.say-fx{position:absolute;inset:0;width:100%;height:100%;opacity:.55}
+.say-wrap{position:relative;z-index:1;margin:auto;max-width:62em;padding:2em 3em;text-align:left}
+.say-tag{font-family:var(--tv-mono);font-size:.95em;letter-spacing:.3em;color:var(--tv-cyan)}
+.say-q{margin:.6em 0 0;font-family:var(--tv-disp);font-weight:600;font-size:3.6em;line-height:1.12;letter-spacing:.01em;text-wrap:balance;color:var(--tv-fg)}
+.say-by{margin-top:1em;font-family:var(--tv-body);font-size:1.6em;line-height:1.35;color:var(--tv-dim);max-width:40em}
+/* saver */
+#tvSaver{position:fixed;inset:0;z-index:50;background:#000;cursor:none}
+.sv-box{position:absolute;left:0;top:0;padding:1.2em 1.6em;font-size:clamp(12px,.9vw,26px);color:#9fb0ba;will-change:transform;max-width:min(36em,80vw)}
+.sv-t{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:3.4em;line-height:1;color:#c6d3da}
+.sv-d{font-family:"IBM Plex Mono",ui-monospace,monospace;letter-spacing:.14em;text-transform:uppercase;font-size:.85em;margin-top:.5em}
+.sv-k{display:flex;gap:1.3em;margin-top:1em;font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.85em;letter-spacing:.08em;text-transform:uppercase}
+.sv-k b{font-family:"Chakra Petch",system-ui,sans-serif;font-size:1.6em;margin-right:.3em;color:#c6d3da}
+.sv-k .al b{color:#ff5b4e}
+.sv-note{margin-top:1.1em;font-family:"Chakra Petch",system-ui,sans-serif;font-size:1.25em;line-height:1.25;color:#7f939e}
+#tvSaver.rest .sv-box{opacity:.55}
+
+/* small screens: let it stack and scroll */
+@media (max-width:900px){
+  html.tv body{overflow:auto}
+  #tv{position:static;min-height:100vh;font-size:13px;grid-template-rows:none;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+  .tv-bar{flex-wrap:wrap}
+  .tv-ann{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .tv-main{grid-template-columns:minmax(0,1fr)}
+  .tv-lanes{grid-auto-flow:row;grid-auto-columns:auto}
+  .lane-b{overflow:visible}
+  .cal-g{min-height:26em}
+  .tv-panel{position:static;display:none;transform:none}
+  .tv-panel.on{display:grid}
+  .tv-cal4 .tv-cal,.tv-load .ld-wrap{position:static}
+  .tv-att{grid-template-columns:minmax(0,1fr)}
+  .att-b{grid-template-columns:minmax(0,1fr);overflow:visible}
+  .ld-row{grid-template-columns:minmax(0,1fr)}
+  .say-q{font-size:2em}
+  .tv-view{display:none}
+}
+
+body{margin:0;font:14px system-ui,sans-serif}
+[hidden]{display:none!important}
+</style></head><body>
+<div id="app" hidden></div>
+<div id="tv" hidden>
+  <div class="tv-bar">
+    <svg class="tv-mark" viewBox="0 0 40 40" aria-hidden="true">
+      <rect x="1" y="1" width="38" height="38" rx="4" fill="none" stroke="#3fc1cc" stroke-width="2"/>
+      <path d="M8 8v24M32 8v24" stroke="#56666f" stroke-width="2"/>
+      <path d="M8 15h6M26 15h6M8 26h6M26 26h6" stroke="#dbe5ea" stroke-width="2"/>
+      <path d="M14 11v8M17 11v8M23 11l-2 8M23 11v8" stroke="#dbe5ea" stroke-width="2" fill="none"/>
+      <path d="M17 15h6" stroke="#dbe5ea" stroke-width="2"/>
+      <circle cx="20" cy="26" r="3.2" fill="none" stroke="#4ccf86" stroke-width="2"/>
+      <path d="M14 26h2.8M23.2 26H26" stroke="#dbe5ea" stroke-width="2"/>
+    </svg>
+    <div class="tv-name"><h1>Controls Work Board</h1><p>Berran Controls · Work status &amp; schedule</p></div>
+    <div class="tv-sp"></div>
+    <div class="tv-view" id="tvView"></div>
+    <div class="tv-lamp" id="tvLamp"><i></i><span>Connecting</span></div>
+    <div class="tv-clock"><div class="t" id="tvTime">--:--</div><div class="d" id="tvDate"></div></div>
+    <div class="tv-prog" aria-hidden="true"><i id="tvProg"></i></div>
+  </div>
+  <div class="tv-ann" id="tvAnn"></div>
+  <div class="tv-stage" id="tvStage">
+    <div class="tv-panel tv-main on" data-p="overview" data-name="Work &amp; schedule">
+      <div class="tv-lanes" id="tvLanes"><div class="tv-msg">Loading board…</div></div>
+      <div class="tv-cal">
+        <div class="cal-h"><span class="n">Schedule · 3 weeks</span><span class="c" id="tvCalSync"></span></div>
+        <div class="cal-g" id="tvCal"></div>
+        <div class="cal-f"><span><i style="background:#ff5b4e"></i>Due · alarm</span><span><i style="background:#56666f"></i>Due · normal</span><span><i style="background:#4ccf86"></i>Awaiting review</span><span><i style="background:#9aa6ff"></i>Calendar entry</span></div>
+      </div>
+    </div>
+    <div class="tv-panel tv-att" data-p="attention" data-name="Needs attention">
+      <section class="att-col alarm"><div class="att-h"><span class="n">Overdue &amp; blocked</span><span class="c" id="attAc"></span></div><div class="att-b" id="attA" data-scroll></div></section>
+      <section class="att-col review"><div class="att-h"><span class="n">Awaiting review</span><span class="c" id="attRc"></span></div><div class="att-b" id="attR" data-scroll></div></section>
+    </div>
+    <div class="tv-panel tv-cal4" data-p="schedule" data-name="Four-week schedule">
+      <div class="tv-cal">
+        <div class="cal-h"><span class="n">Schedule · 4 weeks</span><span class="c" id="tvCal4Sync"></span></div>
+        <div class="cal-g" id="tvCal4"></div>
+        <div class="cal-f"><span><i style="background:#ff5b4e"></i>Due · alarm</span><span><i style="background:#56666f"></i>Due · normal</span><span><i style="background:#4ccf86"></i>Awaiting review</span><span><i style="background:#9aa6ff"></i>Calendar entry</span></div>
+      </div>
+    </div>
+    <div class="tv-panel tv-load" data-p="team" data-name="Team load">
+      <div class="ld-wrap">
+        <div class="ld-head"><span class="n">Team load</span><span class="ld-key"><span><i class="a"></i>Overdue / blocked</span><span><i class="n"></i>Active</span><span><i class="r"></i>Awaiting review</span></span></div>
+        <div class="ld-rows" id="tvLoad"></div>
+      </div>
+    </div>
+    <div class="tv-panel tv-say" data-p="saying" data-name="Shop talk">
+      <div class="say-wrap"><div class="say-tag" id="sayTag">SHOP TALK</div><blockquote class="say-q" id="sayQ"></blockquote><div class="say-by" id="sayBy"></div></div>
+      <canvas class="say-fx" id="sayFx" aria-hidden="true"></canvas>
+    </div>
+  </div>
+  <div class="tv-tick"><div class="lbl2">EVENT LOG</div><div class="vp"><div class="tr" id="tvTick"></div></div></div>
+  <div class="tv-ctl" id="tvCtl"><button type="button" id="tvNext">Next view</button><button type="button" id="tvFull">Full screen</button></div>
+</div>
+<div id="tvSaver" hidden><div class="sv-box" id="svBox"><div class="sv-t" id="svTime"></div><div class="sv-d" id="svDate"></div><div class="sv-k" id="svK"></div><div class="sv-note" id="svNote"></div></div></div>
+
+
+<script type="application/json" id="boardData">{"generatedAt": "2026-11-03T18:39:06.001270Z", "emps": [{"id": "9aqxxov8yp9l3rhp7dy8", "name": "Alec", "lastUpdate": "2026-10-20"}, {"id": "qmfqf869rixccfqf7wi1", "name": "Chase", "lastUpdate": "2026-10-29"}, {"id": "tkhtumgfy5qee3gb5tqa", "name": "David", "lastUpdate": ""}, {"id": "wdgphgyo80snvgyk05k0", "name": "Ryan", "lastUpdate": "2026-11-02"}], "tasks": [{"id": "CW-020", "projectCode": "KLMM1", "title": "Commissioning / Programming", "status": "in_progress", "priority": "normal", "due": "2026-11-13", "employeeId": "tkhtumgfy5qee3gb5tqa", "thread": [{"at": "2026-11-03", "by": "dave", "kind": "feedback", "text": "Machine is built, but mechanical design issues persist. Wiring is nearly completed, but home/overtravel switch replacement is being conducted as initial swit…", "loggedAt": null}]}, {"id": "CW-021", "projectCode": "IFWQL1", "title": "Design Review Documentation", "status": "in_progress", "priority": "high", "due": "2026-11-06", "employeeId": "tkhtumgfy5qee3gb5tqa", "thread": [{"at": "2026-11-03", "by": "dave", "kind": "feedback", "text": "Meeting took place two weeks ago to discuss design considerations and to review general machine operational requirements. Berran has more creative license th…", "loggedAt": null}, {"at": "2026-11-03", "by": "dave", "kind": "feedback", "text": "Discussed motor controls and sizing with Ralph for payout and take up rollers. Need to follow up with motor capabilities at low speeds defined by Ralph's cal…", "loggedAt": null}]}, {"id": "CW-023", "projectCode": "TYTR1", "title": "Controls Layout and Initial Programming", "status": "assigned", "priority": "normal", "due": "2026-11-06", "employeeId": "tkhtumgfy5qee3gb5tqa", "thread": []}, {"id": "CW-027", "projectCode": "ADSEOAT5", "title": "Complete EOAT Assemblies", "status": "assigned", "priority": "normal", "due": "2026-11-06", "employeeId": "9aqxxov8yp9l3rhp7dy8", "thread": []}, {"id": "CW-028", "projectCode": "SA734DRC", "title": "Commissioning and Programming", "status": "assigned", "priority": "normal", "due": "2026-11-06", "employeeId": "qmfqf869rixccfqf7wi1", "thread": []}], "calendar": {"updatedAt": "2026-11-03T17:09:48Z", "events": [{"subject": "Vacation - Ryan", "start": "2026-11-04", "end": "2026-11-07", "allDay": true}]}, "sayings": []}</script>
+<script>
+
+const D=JSON.parse(document.getElementById("boardData").textContent);
+const S={emps:D.emps||[],tasks:D.tasks||[],cal:D.calendar||null,display:{sayings:D.sayings||[]},generatedAt:D.generatedAt,live:true,attN:0};
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const today=()=>{const p=new Intl.DateTimeFormat("en-CA",{year:"numeric",month:"2-digit",day:"2-digit",timeZone:"America/New_York"}).format(new Date());return p};
+const fmt=ymd=>{if(!ymd)return"";const [y,m,d]=ymd.slice(0,10).split("-").map(Number);return new Date(y,m-1,d).toLocaleDateString(undefined,{month:"short",day:"numeric"})};
+const OPEN=["assigned","in_progress","blocked","returned","submitted"];
+const isOpen=t=>OPEN.includes(t.status);
+const overdue=t=>isOpen(t)&&t.status!=="submitted"&&t.due&&t.due<today();
+const empName=id=>(S.emps.find(e=>e.id===id)||{}).name||"Unassigned";
+
+/* ===== TV display ===== */
+const TZ="America/New_York";
+const pad=n=>String(n).padStart(2,"0");
+const ymdOf=d=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
+const toDate=ymd=>{const [y,m,d]=ymd.slice(0,10).split("-").map(Number);return new Date(y,m-1,d)};
+const addDays=(ymd,n)=>{const d=toDate(ymd);d.setDate(d.getDate()+n);return ymdOf(d)};
+const dayDiff=(a,b)=>Math.round((toDate(b)-toDate(a))/864e5);
+const first=n=>String(n||"").split(" ")[0];
+const isTV=()=>true;
+const TVST={assigned:"Assigned",in_progress:"In progress",blocked:"Blocked",returned:"Returned",submitted:"Awaiting review"};
+function tvClass(t){if(t.status==="submitted")return"review";if(t.status==="blocked"||overdue(t))return"alarm";if(t.status==="returned")return"warn";return""}
+function tvSort(a,b){
+  const k=t=>[t.status==="submitted"?1:0,overdue(t)||t.status==="blocked"?0:1,t.priority==="high"?0:1,t.due||"9999-99-99"];
+  const x=k(a),y=k(b);for(let i=0;i<x.length;i++){if(x[i]<y[i])return-1;if(x[i]>y[i])return 1}return 0;
+}
+function latestNote(t){const th=(t.thread||[]).filter(m=>m.by==="employee"||(m.by==="dave"&&(m.kind==="feedback"||m.kind==="return")));return th.length?th[th.length-1]:null}
+function tvCard(t,who){
+  const cls=tvClass(t),td=today();
+  let due="NO DUE DATE";
+  if(t.due){const n=dayDiff(td,t.due);due=t.status!=="submitted"&&n<0?`<span class="od">OVERDUE ${-n}D · ${esc(fmt(t.due).toUpperCase())}</span>`:n===0?`<span class="od">DUE TODAY</span>`:`DUE ${esc(fmt(t.due).toUpperCase())}`}
+  const ln=latestNote(t);
+  return `<div class="tc ${cls}"><div class="tc-h"><span class="tc-id">${esc(t.id)}</span>${t.projectCode?`<span class="tc-pc">${esc(t.projectCode)}</span>`:""}<span class="tc-st">${esc(TVST[t.status]||t.status)}</span></div>
+    <div class="tc-t">${esc(t.title)}</div>
+    <div class="tc-m">${who?`<span style="color:var(--tv-fg)">${esc(empName(t.employeeId).toUpperCase())}</span>`:""}<span>${due}</span>${t.priority==="high"&&t.status!=="submitted"?`<span class="hi">HIGH</span>`:""}${t.job&&t.job!=="Berran Facility"?`<span>${esc(t.job)}</span>`:""}</div>
+    ${ln?`<div class="tc-u">${esc(fmt(ln.at))} · ${esc(ln.text)}</div>`:""}</div>`;
+}
+function renderTV(){
+  if(!isTV())return;
+  const open=S.tasks.filter(isOpen),td=today();
+  const rev=open.filter(t=>t.status==="submitted"),blk=open.filter(t=>t.status==="blocked"),od=open.filter(overdue);
+  const wkEnd=addDays(td,7-((toDate(td).getDay()+6)%7)-1);
+  const dueWk=open.filter(t=>t.status!=="submitted"&&t.due&&t.due>=td&&t.due<=wkEnd);
+  const ann=[["Open items",open.length,"lit-cyan","across the team"],["Awaiting review",rev.length,rev.length?"lit-run":"","ready to accept"],["Blocked",blk.length,blk.length?"lit-alarm":"","need action"],["Overdue",od.length,od.length?"lit-alarm":"","past due date"],["Due this week",dueWk.length,dueWk.length?"lit-amber":"","through "+fmt(wkEnd)]];
+  $("tvAnn").innerHTML=ann.map(([k,v,c,s])=>`<div class="ann ${c}"><div><div class="k">${k}</div><div class="sub2">${esc(s)}</div></div><div class="v">${v}</div></div>`).join("");
+  if(S.live===false&&!S.tasks.length){$("tvLanes").innerHTML=`<div class="tv-msg">Sign in to claude.ai on this screen to show the board.</div>`}
+  else if(S.live!==null){
+    const emps=S.emps.filter(e=>e.active!==false);
+    const lanes=emps.map(e=>({e,ts:open.filter(t=>t.employeeId===e.id).sort(tvSort)}));
+    const orphan=open.filter(t=>!S.emps.some(e=>e.id===t.employeeId));
+    if(orphan.length)lanes.push({e:{id:"_none",name:"Unassigned"},ts:orphan.sort(tvSort)});
+    lanes.sort((a,b)=>(b.ts.length>0)-(a.ts.length>0)||a.e.name.localeCompare(b.e.name));
+    $("tvLanes").innerHTML=lanes.map(({e,ts})=>{
+      const act=ts.filter(t=>t.status!=="submitted").length;
+      return `<section class="lane"><div class="lane-h"><span class="n">${esc(e.name)}</span><span class="c">${act} ACTIVE · ${ts.length-act} REVIEW</span></div>
+      <div class="lane-b" data-scroll>${ts.length?ts.map(t=>tvCard(t)).join(""):`<div class="lane-idle">No open work<br>Available</div>`}</div></section>`}).join("")||`<div class="tv-msg">No team members yet.</div>`;
+  }
+  $("tvCal").innerHTML=buildCal(3,open);$("tvCal4").innerHTML=buildCal(4,open);
+  const syncTxt=S.cal&&S.cal.updatedAt?"OUTLOOK SYNC "+new Date(S.cal.updatedAt).toLocaleTimeString([], {hour:"numeric",minute:"2-digit",timeZone:TZ}).toUpperCase():"";
+  $("tvCalSync").textContent=syncTxt;$("tvCal4Sync").textContent=syncTxt;
+  renderAtt(open);renderLoad(open);
+  if(!$("sayQ").textContent)showSaying();
+  tvViewLabel();
+  renderLog();
+}
+function buildCal(weeks,open){
+  const td=today();
+  const mon=addDays(td,-((toDate(td).getDay()+6)%7));
+  const byDay={};
+  const put=(d,html,o)=>{(byDay[d]=byDay[d]||[]).push({html,o})};
+  for(const t of open){if(!t.due)continue;const c=tvClass(t);const nm=first(empName(t.employeeId));
+    put(t.due,`<div class="ev ${c}" title="${esc(t.id+" "+t.title)}"><b>${esc(t.id.replace("CW-",""))}</b> ${esc(t.projectCode||"")} · ${esc(nm)}</div>`,1)}
+  const evs=(S.cal&&Array.isArray(S.cal.events))?S.cal.events:[];
+  for(const ev of evs){
+    if(!ev||!ev.start)continue;
+    if(ev.allDay){let d=ev.start.slice(0,10);const end=(ev.end||addDays(d,1)).slice(0,10);let g=0;while(d<end&&g<60){put(d,`<div class="ev own" title="${esc(ev.subject)}">${esc(ev.subject)}</div>`,0);d=addDays(d,1);g++}}
+    else{const d=ev.start.slice(0,10),tm=ev.start.slice(11,16);let lab="";if(tm){const [h,mi]=tm.split(":").map(Number);lab=((h%12)||12)+(mi?":"+pad(mi):"")+(h<12?"a":"p")+" "}
+      put(d,`<div class="ev own" title="${esc(ev.subject)}">${esc(lab)}${esc(ev.subject)}</div>`,0)}
+  }
+  let g=`<div style="display:contents">`+["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(n=>`<div class="cal-dn">${n}</div>`).join("")+`</div>`;
+  for(let i=0;i<weeks*7;i++){const d=addDays(mon,i);const dt=toDate(d);const items=(byDay[d]||[]).sort((a,b)=>a.o-b.o);
+    const cls=["cal-d",d<td?"past":"",d===td?"today":"",i%7>4?"wk":""].join(" ");
+    g+=`<div class="${cls}"><div class="cal-n"><span>${dt.getDate()===1||i===0?esc(dt.toLocaleDateString(undefined,{month:"short"}).toUpperCase())+" ":""}${dt.getDate()}</span></div>${items.map(x=>x.html).join("")}</div>`}
+  return g;
+}
+function renderAtt(open){
+  const al=open.filter(t=>t.status==="blocked"||overdue(t)).sort(tvSort),rv=open.filter(t=>t.status==="submitted").sort(tvSort);
+  $("attAc").textContent=al.length;$("attRc").textContent=rv.length;
+  $("attA").innerHTML=al.length?al.map(t=>tvCard(t,true)).join(""):`<div class="att-empty">Nothing overdue or blocked</div>`;
+  $("attR").innerHTML=rv.length?rv.map(t=>tvCard(t,true)).join(""):`<div class="att-empty">Review queue empty</div>`;
+  S.attN=al.length+rv.length;
+}
+function renderLoad(open){
+  const td=today();
+  const rows=S.emps.filter(e=>e.active!==false).map(e=>{
+    const ts=open.filter(t=>t.employeeId===e.id);
+    const a=ts.filter(t=>t.status==="blocked"||overdue(t)).length,r=ts.filter(t=>t.status==="submitted").length,n=ts.length-a-r;
+    const nx=ts.filter(t=>t.status!=="submitted"&&t.due&&t.due>=td).sort((x,y)=>x.due.localeCompare(y.due))[0];
+    let last=e.lastUpdate||"";
+    return {e,a,n,r,tot:ts.length,nx,last};
+  });
+  const max=Math.max(4,...rows.map(x=>x.tot));
+  $("tvLoad").innerHTML=rows.map(x=>`<div class="ld-row"><div class="ld-n">${esc(x.e.name)}<small>${x.tot} OPEN</small></div>
+    <div class="ld-bar">${x.a?`<i class="a" style="flex-grow:${x.a}">${x.a}</i>`:""}${x.n?`<i class="n" style="flex-grow:${x.n}">${x.n}</i>`:""}${x.r?`<i class="r" style="flex-grow:${x.r}">${x.r}</i>`:""}<i class="e" style="flex-grow:${max-x.tot}"></i></div>
+    <div class="ld-next">${x.nx?`Next due <b>${esc(x.nx.id)}</b> ${esc(x.nx.projectCode||"")} · ${esc(fmt(x.nx.due))}`:x.tot?"No upcoming due dates":"No open work · available"}<span>${x.last?"LAST UPDATE "+esc(fmt(x.last).toUpperCase()):"NO UPDATES YET"}</span></div></div>`).join("");
+}
+function renderLog(){
+  const td=today();
+  const log=[];for(const t of S.tasks)for(const m of t.thread||[]){if((m.by==="employee"||m.by==="dave")&&m.at&&dayDiff(m.at,td)<=10&&!["status","priority","due","reassign"].includes(m.kind))log.push({t,m})}
+  log.sort((a,b)=>(b.m.loggedAt||b.m.at).localeCompare(a.m.loggedAt||a.m.at));
+  const items=log.slice(0,14).map(({t,m})=>`<span><em>${esc(fmt(m.at).toUpperCase())}</em><b>${esc(t.id)} ${esc(t.projectCode||"")}</b>${esc(m.by==="dave"?"Dave":first(empName(t.employeeId)))}: ${esc(m.text)}</span>`);
+  const tr=$("tvTick");
+  if(!items.length){tr.classList.remove("run");tr.innerHTML=`<span>No updates in the last 10 days.</span>`}
+  else{const one=items.join("");tr.innerHTML=one+one;tr.classList.add("run");tr.style.setProperty("--dur",Math.max(40,items.length*9)+"s")}
+}
+function tvClock(){
+  const now=new Date();
+  $("tvTime").textContent=now.toLocaleTimeString([], {hour:"numeric",minute:"2-digit",timeZone:TZ});
+  $("tvDate").textContent=now.toLocaleDateString([], {weekday:"long",month:"short",day:"numeric",year:"numeric",timeZone:TZ});
+  const age=(now-new Date(S.generatedAt))/36e5;const stale=!(age<3)&&!offHours();const l=$("tvLamp");l.className="tv-lamp"+(stale?" off":" on");l.querySelector("span").textContent=(stale?"Data stale · ":"Updated ")+new Date(S.generatedAt).toLocaleTimeString([], {hour:"numeric",minute:"2-digit",timeZone:TZ});
+}
+// slow auto-scroll for lanes taller than the screen
+let tvScrollT=null;
+function tvScroller(){
+  if(tvScrollT)return;
+  const reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const st=new WeakMap();
+  tvScrollT=setInterval(()=>{
+    if(!isTV())return;
+    document.querySelectorAll("#tvStage .tv-panel.on [data-scroll]").forEach(el=>{
+      const max=el.scrollHeight-el.clientHeight;if(max<=2){el.scrollTop=0;return}
+      const s=st.get(el)||{hold:120};st.set(el,s);
+      if(s.hold>0){s.hold--;return}
+      if(el.scrollTop>=max-1){s.hold=160;s.reset=true;return}
+      if(s.reset){el.scrollTop=0;s.reset=false;s.hold=120;return}
+      el.scrollTop=reduce?Math.min(max,el.scrollTop+el.clientHeight*.8):el.scrollTop+1;
+      if(reduce)s.hold=160;
+    });
+  },50);
+}
+let wake=null;
+async function tvWake(){try{if(isTV()&&"wakeLock" in navigator&&!wake){wake=await navigator.wakeLock.request("screen");wake.addEventListener("release",()=>{wake=null})}}catch(e){}}
+let ctlT=null;
+function tvPoke(){const c=$("tvCtl");c.classList.add("show");clearTimeout(ctlT);ctlT=setTimeout(()=>c.classList.remove("show"),3500)}
+/* ---- burn-in protection & rotation ----
+   Views rotate with a crossfade; the whole screen shifts a few pixels every few minutes;
+   every 20 minutes a 40-second black saver with a drifting clock rests every pixel;
+   outside 6 AM–7 PM ET and on weekends the saver stays on, dimmed. */
+const CFG={viewSec:{overview:75,attention:35,schedule:30,team:30,saying:20},saverEveryMin:20,saverSec:40,orbitMin:3,dayStart:6,dayEnd:19,snoozeMin:15};
+const DEFAULT_SAYINGS=[
+  ["Safety first, every first.","The safest machine is the one that was tested before anyone needed it to be."],
+  ["Verify, then trust.","Ring out every point. A wire that looks right is a guess; a loop check is a fact."],
+  ["Document it like you'll forget it.","Red-lines today save a service call tomorrow. Update the print before you close the panel."],
+  ["Fault handling is the program.","Anyone can make it run. Good controls make it recover."],
+  ["A clear HMI is a safe HMI.","If the operator has to ask what a screen means, the screen isn't done."],
+  ["Measure twice, download once.","Back up the program before every change, and label what changed."],
+  ["Lockout means locked out.","Your lock, your key, your verification. Every time, every source."],
+  ["Small updates beat big surprises.","Reply to the morning list with one line. Your team plans around it."],
+  ["Quality is built in, not inspected in.","Clean wiring, clear tags and tidy code are how customers judge us."],
+  ["The commissioning starts at the desk.","Sim it, test the edge cases, then go to the floor ready."],
+  ["Every alarm should mean something.","If it alarms all the time, nobody hears it when it matters."],
+  ["Leave the panel better than you found it.","Torque checked, covers on, labels legible, prints in the pocket."],
+  ["Ask early.","A five-minute question beats a five-hour fix. Blocked? Say so in your reply."],
+  ["Finish strong.","Done means tested, documented and signed off, not just running."]
+];
+const R={i:0,t:0,order:["overview","attention","schedule","team","saying"],eng:null,say:-1,saverOn:false,saverUntil:0,saverNext:Date.now()+CFG.saverEveryMin*6e4,snoozeUntil:0,orbit:0,orbitAt:Date.now()};
+const sayings=()=>{const s=S.display&&Array.isArray(S.display.sayings)&&S.display.sayings.length?S.display.sayings.map(x=>typeof x==="string"?[x,""]:[x.text||"",x.detail||""]):DEFAULT_SAYINGS;return s.filter(x=>x[0])};
+function showSaying(){const L=sayings();if(!L.length)return;R.say=(R.say+1)%L.length;const [q,d]=L[R.say];$("sayQ").textContent=q;$("sayBy").textContent=d;$("sayTag").textContent="SHOP TALK · "+(R.say+1)+"/"+L.length}
+function viewsAvail(){return R.order.filter(v=>v!=="attention"||(S.attN||0)>0)}
+function tvViewLabel(){const v=viewsAvail();const cur=R.order[R.i];const p=document.querySelector(`#tvStage [data-p="${cur}"]`);
+  $("tvView").innerHTML=`<span>${esc(p?p.dataset.name:"")}</span><span class="dots">${v.map(x=>`<i class="${x===cur?"on":""}"></i>`).join("")}</span>`}
+function showView(name){
+  R.i=R.order.indexOf(name);R.t=0;
+  document.querySelectorAll("#tvStage .tv-panel").forEach(p=>p.classList.toggle("on",p.dataset.p===name));
+  document.querySelectorAll("#tvStage [data-scroll]").forEach(el=>el.scrollTop=0);
+  if(name==="saying"){showSaying();fxStart()}else fxStop();
+  tvViewLabel();$("tvProg").style.width="0";
+}
+function nextView(){const v=viewsAvail();const cur=R.order[R.i];const k=v.indexOf(cur);showView(v[(k+1)%v.length]||"overview")}
+function etNow(){const f=new Intl.DateTimeFormat("en-US",{hour:"numeric",hour12:false,weekday:"short",timeZone:TZ}).formatToParts(new Date());const h=+(f.find(x=>x.type==="hour")||{value:12}).value%24;const w=(f.find(x=>x.type==="weekday")||{value:"Mon"}).value;return{h,wk:w==="Sat"||w==="Sun"}}
+function offHours(){const {h,wk}=etNow();return wk||h<CFG.dayStart||h>=CFG.dayEnd}
+function setSaver(on,rest){
+  const el=$("tvSaver");
+  if(on){const open=S.tasks.filter(isOpen),od=open.filter(overdue).length,rv=open.filter(t=>t.status==="submitted").length,bk=open.filter(t=>t.status==="blocked").length;
+    $("svK").innerHTML=`<span><b>${open.length}</b>open</span><span><b>${rv}</b>review</span><span class="${bk?"al":""}"><b>${bk}</b>blocked</span><span class="${od?"al":""}"><b>${od}</b>overdue</span>`;
+    if(!R.saverOn){const L=sayings();$("svNote").textContent=rest?"Display resting · board returns at "+CFG.dayStart+":00 AM on the next workday":(L.length?L[Math.floor(Math.random()*L.length)][0]:"");}
+    el.classList.toggle("rest",!!rest);
+  }
+  if(on===R.saverOn)return;R.saverOn=on;el.hidden=!on;
+  if(on)driftStart();else driftStop();
+}
+let drift=null;
+function driftStart(){
+  const box=$("svBox");const reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let x=Math.random()*Math.max(1,innerWidth-box.offsetWidth),y=Math.random()*Math.max(1,innerHeight-box.offsetHeight),vx=(Math.random()<.5?-1:1)*22,vy=(Math.random()<.5?-1:1)*16,last=performance.now(),jump=0;
+  const step=now=>{const dt=Math.min(.1,(now-last)/1000);last=now;const mw=Math.max(0,innerWidth-box.offsetWidth),mh=Math.max(0,innerHeight-box.offsetHeight);
+    if(reduce){if(now-jump>15000){jump=now;x=Math.random()*mw;y=Math.random()*mh}}
+    else{x+=vx*dt;y+=vy*dt;if(x<0){x=0;vx=-vx}if(x>mw){x=mw;vx=-vx}if(y<0){y=0;vy=-vy}if(y>mh){y=mh;vy=-vy}}
+    box.style.transform=`translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`;drift=requestAnimationFrame(step)};
+  drift=requestAnimationFrame(step);
+}
+function driftStop(){if(drift)cancelAnimationFrame(drift);drift=null}
+const ORBIT=[[0,0],[3,2],[-2,4],[-4,-1],[2,-3],[-3,-3],[4,1]];
+function tvEngine(){
+  if(R.eng)return;
+  R.eng=setInterval(()=>{
+    if(!isTV())return;
+    const now=Date.now(),off=offHours()&&now>=R.snoozeUntil;
+    if(!off&&!R.saverOn&&now>=R.saverNext&&now>=R.snoozeUntil){R.saverUntil=now+CFG.saverSec*1e3;R.saverNext=now+CFG.saverEveryMin*6e4}
+    const sv=off||now<R.saverUntil;setSaver(sv,off);
+    $("svTime").textContent=$("tvTime").textContent;$("svDate").textContent=$("tvDate").textContent;
+    if(sv)return;
+    const cur=R.order[R.i];R.t++;const dur=CFG.viewSec[cur]||30;
+    $("tvProg").style.width=Math.min(100,R.t/dur*100)+"%";
+    if(R.t>=dur)nextView();
+    if(now-R.orbitAt>=CFG.orbitMin*6e4){R.orbitAt=now;R.orbit=(R.orbit+1)%ORBIT.length;const [dx,dy]=ORBIT[R.orbit];$("tv").style.transform=`translate(${dx}px,${dy}px)`}
+  },1000);
+}
+// subtle animated circuit-trace background for the sayings view
+let fx=null;
+function fxStart(){
+  const c=$("sayFx");if(!c||fx)return;const reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const ctx=c.getContext("2d");const W=()=>c.width=c.clientWidth*(devicePixelRatio>1?1.5:1),H=()=>c.height=c.clientHeight*(devicePixelRatio>1?1.5:1);W();H();
+  const G=28,traces=[];
+  const mk=()=>{const cols=Math.floor(c.width/G),rows=Math.floor(c.height/G);let x=Math.floor(Math.random()*cols),y=Math.floor(Math.random()*rows);const pts=[[x,y]];let dir=Math.floor(Math.random()*4);for(let i=0;i<14+Math.random()*16;i++){if(Math.random()<.3)dir=(dir+(Math.random()<.5?1:3))%4;x+=[1,0,-1,0][dir];y+=[0,1,0,-1][dir];pts.push([x,y])}return{pts,p:0,life:1}};
+  for(let i=0;i<10;i++)traces.push(mk());
+  const draw=()=>{ctx.clearRect(0,0,c.width,c.height);
+    for(const t of traces){t.p+=reduce?0:.12;if(t.p>t.pts.length+8){Object.assign(t,mk())}
+      ctx.strokeStyle="rgba(63,193,204,.35)";ctx.lineWidth=2;ctx.beginPath();const n=Math.min(t.pts.length,Math.floor(reduce?t.pts.length:t.p));
+      for(let i=0;i<n;i++){const [x,y]=t.pts[i];i?ctx.lineTo(x*G,y*G):ctx.moveTo(x*G,y*G)}ctx.stroke();
+      if(n>0){const [x,y]=t.pts[n-1];ctx.fillStyle="rgba(76,207,134,.8)";ctx.beginPath();ctx.arc(x*G,y*G,3.2,0,7);ctx.fill()}
+      ctx.fillStyle="rgba(63,193,204,.45)";const [sx,sy]=t.pts[0];ctx.fillRect(sx*G-4,sy*G-4,8,8)}
+    fx=requestAnimationFrame(draw)};
+  fx=requestAnimationFrame(draw);
+}
+function fxStop(){if(fx)cancelAnimationFrame(fx);fx=null}
+function tvWakeUser(){if(!isTV())return;if(R.saverOn){const off=offHours();R.saverUntil=0;R.saverNext=Date.now()+CFG.saverEveryMin*6e4;if(off)R.snoozeUntil=Date.now()+CFG.snoozeMin*6e4;setSaver(false)}tvPoke()}
+$("tvSaver").addEventListener("click",tvWakeUser);
+$("tvNext").addEventListener("click",()=>nextView());
+
+function route(){
+  const tv=isTV();
+  document.documentElement.classList.toggle("tv",tv);
+  $("tv").hidden=!tv;$("app").hidden=tv;
+  if(tv){renderTV();tvClock();tvScroller();tvWake();tvPoke();tvEngine()}
+}
+window.addEventListener("hashchange",route);
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")tvWake()});
+document.addEventListener("mousemove",()=>{if(isTV())tvWakeUser()});
+document.addEventListener("keydown",e=>{if(!isTV())return;tvWakeUser();if(e.key==="ArrowRight")nextView()});
+$("tvFull").addEventListener("click",()=>{const d=document.documentElement;try{const p=document.fullscreenElement?document.exitFullscreen():d.requestFullscreen&&d.requestFullscreen();p&&p.catch&&p.catch(()=>{})}catch(e){}});
+setInterval(()=>{if(isTV())tvClock()},1000);
+setInterval(()=>{if(isTV())renderTV()},60000);
+
+
+
+route();
+// every 5 minutes, check the server for a newer copy; reload only when one is there and complete,
+// so a server hiccup never leaves the screen blank
+setInterval(async()=>{
+  try{
+    const r=await fetch(location.href.split("#")[0],{cache:"no-store"});if(!r.ok)return;
+    const t=await r.text();const m=t.match(/"generatedAt":\s*"([^"]+)"/);
+    if(t.includes('id="boardData"')&&m&&m[1]!==S.generatedAt)location.reload();
+  }catch(e){}
+},5*60*1000);
+
+</script>
+</body></html>
